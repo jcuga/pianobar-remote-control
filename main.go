@@ -3,23 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
-	"time"
+	"syscall"
 )
 
-// TODO: catch signal and tell pianobar to quit (enter, enter, q, enter)
-// TODO: scrape channel list on start, will use to populate dropdown.
-// TODO: refactor so channel based comms
-// TODO: put web in front for skip, volume up, volume down, +/-, change station
 func main() {
 
 	usernamePtr := flag.String("u", "", "username")
 	passPtr := flag.String("p", "", "password")
 	stationPtr := flag.Uint("s", 0, "station nubmer")
+	listenPtr := flag.String("http", "0.0.0.0:7890", "listen address")
 	flag.Parse()
 
 	if len(*usernamePtr) == 0 {
@@ -33,12 +31,6 @@ func main() {
 	}
 
 	cmd := exec.Command("pianobar")
-
-	stdout, err := cmd.StdoutPipe()
-
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	stdin, err := cmd.StdinPipe()
 
@@ -57,25 +49,101 @@ func main() {
 	stdin.Write([]byte(strconv.FormatUint(uint64(*stationPtr), 10)))
 	stdin.Write([]byte("\n"))
 
-	x := 0
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	done := make(chan bool, 1)
+	go func() {
+		sig := <-sigs
+		fmt.Println()
+		fmt.Println(sig)
+		done <- true
+	}()
+
+	commands := make(chan string, 1)
+
+	http.HandleFunc("/", getWebHandler(commands))
+	log.Printf("Listening on %s, playing station: %d", *listenPtr, *stationPtr)
+	go func() {
+		log.Fatal(http.ListenAndServe(*listenPtr, nil))
+	}()
+
+Loop:
 	for {
-		<-time.After(40 * time.Second)
-		stdin.Write([]byte("n\n"))
-		x += 1
-		if x > 10 {
-			break
+		select {
+		case cmd := <-commands:
+			stdin.Write([]byte(cmd))
+		case <-done:
+			fmt.Println("Exiting because signal.")
+			stdin.Write([]byte("\n\nq\n"))
+			break Loop
 		}
 	}
+}
 
-	data, err := ioutil.ReadAll(stdout)
+func getWebHandler(commands chan<- string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		command := r.URL.Query().Get("cmd")
+		if len(command) > 0 {
+			log.Printf("Got command: %q", command)
+			switch command {
+			case "pause":
+				commands <- " "
+			case "next":
+				commands <- "n"
+			case "fav":
+				commands <- "+"
+			case "ban":
+				commands <- "-"
+			case "volup1":
+				commands <- ")"
+			case "volup3":
+				commands <- ")))"
+			case "voldown1":
+				commands <- "("
+			case "voldown3":
+				commands <- "((("
+			default:
+				log.Printf("Unrecognized command: %q", command)
+			}
+		}
 
-	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(w, `
+		<html>
+		<head>
+			<title>pianobar-web</title>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<style>
+				body {
+					margin: 0;
+					padding: 0;
+				}
+
+				a {
+					font-size: 1em;
+					text-decoration: none;
+					color: black;
+					display: inline-block;
+					padding: 12%% 0 0 0;
+					margin: 0 0 0.3em 0;
+					font-weight: bold;
+					width: 48%%;
+					height: 15.5%%;
+					text-align: center;
+					vertical-align: middle;
+				}
+			</style>
+		</head>
+		<body>
+			<a href="/?cmd=pause" style="background-color: yellow;">(un)pause</a>
+			<a href="/?cmd=next" style="background-color: orange;">next</a>
+			<a href="/?cmd=fav" style="background-color: pink;">fav</a>
+			<a href="/?cmd=ban" style="background-color: red;">ban</a>
+			<a href="/?cmd=volup1" style="background-color: green;">vol up</a>
+			<a href="/?cmd=volup3" style="background-color: lightgreen;">up x3</a>
+			<a href="/?cmd=voldown1" style="background-color: lightblue;">vol down</a>
+			<a href="/?cmd=voldown3" style="background-color: blue;">down x3</a>
+		</body>
+		</html>`)
+		// TODO: pre-selected commands, display UI
 	}
-
-	if err := cmd.Wait(); err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("Output: %q\n", string(data))
 }
