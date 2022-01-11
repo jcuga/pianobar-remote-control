@@ -16,7 +16,9 @@ func main() {
 
 	usernamePtr := flag.String("u", "", "username")
 	passPtr := flag.String("p", "", "password")
-	stationPtr := flag.Uint("s", 0, "station nubmer")
+	stationPtr := flag.Uint("s", 0, "default station nubmer")
+	maxStationPtr := flag.Uint("m", 5, "max number of stations")
+
 	listenPtr := flag.String("http", "0.0.0.0:7890", "listen address")
 	flag.Parse()
 
@@ -30,6 +32,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *stationPtr > *maxStationPtr {
+		fmt.Printf("default station (-s) cannot be greater than max station (-m).")
+		os.Exit(1)
+	}
 	cmd := exec.Command("pianobar")
 
 	stdin, err := cmd.StdinPipe()
@@ -61,7 +67,7 @@ func main() {
 
 	commands := make(chan string, 1)
 
-	http.HandleFunc("/", getWebHandler(commands))
+	http.HandleFunc("/", getWebHandler(commands, *stationPtr, *maxStationPtr))
 	log.Printf("Listening on %s, playing station: %d", *listenPtr, *stationPtr)
 	go func() {
 		log.Fatal(http.ListenAndServe(*listenPtr, nil))
@@ -80,11 +86,32 @@ Loop:
 	}
 }
 
-func getWebHandler(commands chan<- string) func(http.ResponseWriter, *http.Request) {
+func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		command := r.URL.Query().Get("cmd")
+		station := r.URL.Query().Get("s")
+		curStation := defaultStation
+		if len(station) > 0 {
+			if x, err := strconv.ParseUint(station, 10, 32); err == nil {
+				curStation = uint(x)
+			} else {
+				log.Printf("Error parsing station %q: %v, using default: %d", station, err, defaultStation)
+				curStation = uint(defaultStation)
+			}
+		}
+
+		prevStation := curStation - 1
+		// NOTE: can't check prevStation < 0 as uint! Check curStation == 0 instead
+		if curStation == 0 {
+			prevStation = maxStation
+		}
+		nextStation := curStation + 1
+		if nextStation > maxStation {
+			nextStation = 0
+		}
+
 		if len(command) > 0 {
-			log.Printf("Got command: %q", command)
+			log.Printf("Got command: %q, current station: %d, prevStation: %d, nextStation: %d", command, curStation, prevStation, nextStation)
 			switch command {
 			case "pause":
 				commands <- " "
@@ -93,15 +120,19 @@ func getWebHandler(commands chan<- string) func(http.ResponseWriter, *http.Reque
 			case "fav":
 				commands <- "+"
 			case "ban":
-				commands <- "-"
-			case "volup1":
+				// Use "tired" to ban for 1 month instead of perm ban
+				// in case accidentally clicked wrong button.
+				commands <- "t"
+			case "volup":
 				commands <- ")"
-			case "volup3":
-				commands <- ")))"
-			case "voldown1":
+			case "volupmore":
+				commands <- "))))"
+			case "voldown":
 				commands <- "("
-			case "voldown3":
-				commands <- "((("
+			case "voldownmore":
+				commands <- "(((("
+			case "station":
+				commands <- fmt.Sprintf("s%d\n", curStation)
 			default:
 				log.Printf("Unrecognized command: %q", command)
 			}
@@ -116,34 +147,28 @@ func getWebHandler(commands chan<- string) func(http.ResponseWriter, *http.Reque
 				body {
 					margin: 0;
 					padding: 0;
+					background-color: 0;
 				}
 
 				a {
-					font-size: 1em;
+					font-size: 2em;
 					text-decoration: none;
 					color: black;
 					display: inline-block;
-					padding: 12%% 0 0 0;
-					margin: 0 0 0.3em 0;
+					padding: 0 0 0 0;
+					margin: 0.25%%;
 					font-weight: bold;
-					width: 48%%;
-					height: 15.5%%;
+					width: 49%%;
+					height: 20%%;
 					text-align: center;
 					vertical-align: middle;
 				}
 			</style>
 		</head>
-		<body>
-			<a href="/?cmd=pause" style="background-color: yellow;">(un)pause</a>
-			<a href="/?cmd=next" style="background-color: orange;">next</a>
-			<a href="/?cmd=fav" style="background-color: pink;">fav</a>
-			<a href="/?cmd=ban" style="background-color: red;">ban</a>
-			<a href="/?cmd=volup1" style="background-color: green;">vol up</a>
-			<a href="/?cmd=volup3" style="background-color: lightgreen;">up x3</a>
-			<a href="/?cmd=voldown1" style="background-color: lightblue;">vol down</a>
-			<a href="/?cmd=voldown3" style="background-color: blue;">down x3</a>
-		</body>
-		</html>`)
-		// TODO: pre-selected commands, display UI
+		<body><a href="/?cmd=pause&s=%d" style="background-color: yellow;">(un)pause</a><a href="/?cmd=next&s=%d" style="background-color: orange;">next</a><a href="/?cmd=fav&s=%d" style="background-color: pink;">fav</a><a href="/?cmd=ban&s=%d" style="background-color: red;">ban</a><a href="/?cmd=volup&s=%d" style="background-color: green;">vol +</a><a href="/?cmd=volupmore&s=%d" style="background-color: lightgreen;">vol ++</a><a href="/?cmd=voldown&s=%d" style="background-color: lightblue;">vol -</a><a href="/?cmd=voldownmore&s=%d" style="background-color: blue;">vol --</a><a href="/?cmd=station&s=%d" style="background-color: chocolate;">station -</a><a href="/?cmd=station&s=%d" style="background-color: magenta;">station +</a></body>
+		</html>`,
+			curStation, curStation, curStation, curStation,
+			curStation, curStation, curStation, curStation,
+			prevStation, nextStation)
 	}
 }
