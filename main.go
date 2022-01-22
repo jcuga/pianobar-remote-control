@@ -14,12 +14,12 @@ import (
 
 func main() {
 
-	usernamePtr := flag.String("u", "", "username")
-	passPtr := flag.String("p", "", "password")
-	stationPtr := flag.Uint("s", 0, "default station nubmer")
-	maxStationPtr := flag.Uint("m", 5, "max number of stations")
-
-	listenPtr := flag.String("http", "0.0.0.0:7890", "listen address")
+	usernamePtr := flag.String("u", "", "Username")
+	passPtr := flag.String("p", "", "Password")
+	stationPtr := flag.Uint("s", 0, "Default station number on start.")
+	maxStationPtr := flag.Uint("m", 10, "Max number of stations/how high next-channel goes before wraps back to 0.")
+	hardBanPtr := flag.Bool("hardban", false, "If set, the 'ban' button does a perm ban instead of 1 month. (issues ban instead of tired command).")
+	listenPtr := flag.String("http", "0.0.0.0:7890", "Listen address for serving web remote control.")
 	flag.Parse()
 
 	if len(*usernamePtr) == 0 {
@@ -67,8 +67,8 @@ func main() {
 
 	commands := make(chan string, 1)
 
-	http.HandleFunc("/", getWebHandler(commands, *stationPtr, *maxStationPtr))
-	log.Printf("Listening on %s, playing station: %d", *listenPtr, *stationPtr)
+	http.HandleFunc("/", getWebHandler(commands, *stationPtr, *maxStationPtr, *hardBanPtr))
+	log.Printf("Listening on http://%s, playing station: %d of %d. Hard-ban: %t", *listenPtr, *stationPtr, *maxStationPtr, *hardBanPtr)
 	go func() {
 		log.Fatal(http.ListenAndServe(*listenPtr, nil))
 	}()
@@ -86,7 +86,7 @@ Loop:
 	}
 }
 
-func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint) func(http.ResponseWriter, *http.Request) {
+func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint, hardBan bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		command := r.URL.Query().Get("cmd")
 		station := r.URL.Query().Get("s")
@@ -120,9 +120,13 @@ func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint)
 			case "fav":
 				commands <- "+"
 			case "ban":
-				// Use "tired" to ban for 1 month instead of perm ban
-				// in case accidentally clicked wrong button.
-				commands <- "t"
+				if hardBan {
+					commands <- "-"
+				} else {
+					// Use "tired" to ban for 1 month instead of perm ban
+					// in case accidentally clicked wrong button.
+					commands <- "t"
+				}
 			case "volup":
 				commands <- ")"
 			case "volupmore":
@@ -141,7 +145,7 @@ func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint)
 		fmt.Fprintf(w, `
 		<html>
 		<head>
-			<title>pianobar-web</title>
+			<title>pianobar-rc (%d)</title>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
 			<style>
 				body {
@@ -165,10 +169,10 @@ func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint)
 				}
 			</style>
 		</head>
-		<body><a href="/?cmd=pause&s=%d" style="background-color: yellow;">(un)pause</a><a href="/?cmd=next&s=%d" style="background-color: orange;">next</a><a href="/?cmd=fav&s=%d" style="background-color: pink;">fav</a><a href="/?cmd=ban&s=%d" style="background-color: red;">ban</a><a href="/?cmd=volup&s=%d" style="background-color: green;">vol +</a><a href="/?cmd=volupmore&s=%d" style="background-color: lightgreen;">vol ++</a><a href="/?cmd=voldown&s=%d" style="background-color: lightblue;">vol -</a><a href="/?cmd=voldownmore&s=%d" style="background-color: blue;">vol --</a><a href="/?cmd=station&s=%d" style="background-color: chocolate;">station -</a><a href="/?cmd=station&s=%d" style="background-color: magenta;">station +</a></body>
+		<body><a href="/?cmd=pause&s=%d" style="background-color: yellow;">(un)pause</a><a href="/?cmd=next&s=%d" style="background-color: orange;">next</a><a href="/?cmd=fav&s=%d" style="background-color: pink;">fav</a><a href="/?cmd=ban&s=%d" style="background-color: red;">ban</a><a href="/?cmd=volup&s=%d" style="background-color: green;">vol +</a><a href="/?cmd=volupmore&s=%d" style="background-color: lightgreen;">vol ++</a><a href="/?cmd=voldown&s=%d" style="background-color: lightblue;">vol -</a><a href="/?cmd=voldownmore&s=%d" style="background-color: blue;">vol --</a><a href="/?cmd=station&s=%d" style="background-color: chocolate;">station - (%d)</a><a href="/?cmd=station&s=%d" style="background-color: magenta;">station + (%d)</a></body>
 		</html>`,
 			curStation, curStation, curStation, curStation,
 			curStation, curStation, curStation, curStation,
-			prevStation, nextStation)
+			curStation, prevStation, prevStation, nextStation, nextStation)
 	}
 }
