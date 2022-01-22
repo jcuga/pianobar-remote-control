@@ -62,3 +62,24 @@ go build -o pianobar-rc main.go
 ```
 go fmt ./... && go vet ./... && go build -o pianobar-rc main.go
 ```
+
+## Releases
+
+### 0.1
+Initial release!
+
+### Cross Compiled Releases
+```
+RELEASE=0.1
+osArray=("linux" "darwin")
+archArray=("386" "amd64" "arm" "arm64")
+
+for i in ${!osArray[@]}; do
+  for j in ${!archArray[@]}; do
+
+    GOOS=${osArray[$i]} GOARCH=${archArray[$j]} go build -o pianobar-rc-${RELEASE}-${osArray[$i]}-${archArray[$j]} main.go
+
+  done
+done
+
+```
