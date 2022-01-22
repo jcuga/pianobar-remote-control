@@ -1,1 +1,1 @@
-module github.com/jcuga/pianobar-web
+module github.com/jcuga/pianobar-remote-control
