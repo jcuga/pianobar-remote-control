@@ -152,6 +152,9 @@ func getWebHandler(commands chan<- string, defaultStation uint, maxStation uint,
 					margin: 0;
 					padding: 0;
 					background-color: 0;
+					max-width: 650px;
+					margin-left: auto;
+					margin-right: auto;
 				}
 
 				a {
