@@ -19,6 +19,7 @@ func main() {
 	stationPtr := flag.Uint("s", 0, "Default station number on start.")
 	maxStationPtr := flag.Uint("m", 10, "Max number of stations/how high next-channel goes before wraps back to 0.")
 	hardBanPtr := flag.Bool("hardban", false, "If set, the 'ban' button does a perm ban instead of 1 month. (issues ban instead of tired command).")
+	startPausedPtr := flag.Bool("paused", false, "Start paused. Useful if auto-starting this program on boot but don't want to play until first use.")
 	listenPtr := flag.String("http", "0.0.0.0:7890", "Listen address for serving web remote control.")
 	flag.Parse()
 
@@ -66,6 +67,9 @@ func main() {
 	}()
 
 	commands := make(chan string, 1)
+	if *startPausedPtr {
+		commands <- " " // NOTE: space (" ") is the pause key
+	}
 
 	http.HandleFunc("/", getWebHandler(commands, *stationPtr, *maxStationPtr, *hardBanPtr))
 	log.Printf("Listening on http://%s, playing station: %d of %d. Hard-ban: %t", *listenPtr, *stationPtr, *maxStationPtr, *hardBanPtr)

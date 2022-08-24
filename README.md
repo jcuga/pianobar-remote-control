@@ -31,6 +31,8 @@ Usage of ./pianobar-rc:
     	Max number of stations/how high next-channel goes before wraps back to 0. (default 10)
   -p string
     	Password
+  -paused
+    	Start paused. Useful if auto-starting this program on boot but don't want to play until first use.
   -s uint
     	Default station number on start.
   -u string
