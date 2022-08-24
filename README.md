@@ -23,6 +23,8 @@ Run `pianobar-rc` and it will play music via `pianobar`, and then you can visit 
 $ ./pianobar-rc -h
 
 Usage of ./pianobar-rc:
+  -delay uint
+    	Delay --delay seconds before starting pianobar (default 0). Allows time for networking to start on boot if auto-running.
   -hardban
     	If set, the 'ban' button does a perm ban instead of 1 month. (issues ban instead of tired command).
   -http string

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -20,6 +21,7 @@ func main() {
 	maxStationPtr := flag.Uint("m", 10, "Max number of stations/how high next-channel goes before wraps back to 0.")
 	hardBanPtr := flag.Bool("hardban", false, "If set, the 'ban' button does a perm ban instead of 1 month. (issues ban instead of tired command).")
 	startPausedPtr := flag.Bool("paused", false, "Start paused. Useful if auto-starting this program on boot but don't want to play until first use.")
+	startDelayPtr := flag.Uint("delay", 0, "Delay --delay seconds before starting pianobar (default 0). Allows time for networking to start on boot if auto-running.")
 	listenPtr := flag.String("http", "0.0.0.0:7890", "Listen address for serving web remote control.")
 	flag.Parse()
 
@@ -37,6 +39,13 @@ func main() {
 		fmt.Printf("default station (-s) cannot be greater than max station (-m).")
 		os.Exit(1)
 	}
+
+	if *startDelayPtr > 0 {
+		log.Printf("Delaying %d seconds before running pianobar...", *startDelayPtr)
+		time.Sleep(time.Duration(*startDelayPtr) * time.Second)
+	}
+
+	log.Println("Starting pianobar...")
 	cmd := exec.Command("pianobar")
 
 	stdin, err := cmd.StdinPipe()
